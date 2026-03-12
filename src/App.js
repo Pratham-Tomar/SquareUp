@@ -102,6 +102,74 @@ const SQRT_LAST = {0:[0],1:[1,9],4:[2,8],5:[5],6:[4,6],9:[3,7]};
 const STREAK_MSGS = {3:"TRIPLE! 🎯",5:"ON FIRE! 🔥",10:"UNSTOPPABLE! ⚡",15:"LEGENDARY! 👑",20:"GODMODE! 🏆"};
 
 // ─────────────────────────────────────────────────────────────────────────────
+//  Speed Math — level-based problem generator
+//  tier = every 5 correct answers (first-try) → digits scale up
+// ─────────────────────────────────────────────────────────────────────────────
+const TABLES_NUMS = Array.from({length:20}, (_,i) => i+1);
+
+const SPEED_SUBS = [
+  { id:"add", label:"＋", sym:"+", color:"#00e87a" },
+  { id:"sub", label:"－", sym:"−", color:"#ffc200" },
+  { id:"mul", label:"×",  sym:"×", color:"#ff6b35" },
+  { id:"div", label:"÷",  sym:"÷", color:"#a78bfa" },
+];
+
+const genSpeedProblem = (op, level) => {
+  const tier = Math.min(Math.floor((level - 1) / 5), 6);
+  if (op === "add") {
+    const cfgs = [
+      [rand(2,9),      rand(2,9)],
+      [rand(12,99),    rand(2,9)],
+      [rand(12,99),    rand(12,99)],
+      [rand(100,999),  rand(12,99)],
+      [rand(100,999),  rand(100,999)],
+      [rand(1000,9999),rand(100,999)],
+      [rand(1000,9999),rand(1000,9999)],
+    ];
+    const [a,b] = cfgs[tier];
+    return { a, b, sym:"+", answer:a+b };
+  }
+  if (op === "sub") {
+    const gens = [
+      ()=>{ const b=rand(1,7);   return [rand(b+1,9),b];         },
+      ()=>{ const b=rand(2,9);   return [rand(b+10,99),b];       },
+      ()=>{ const b=rand(10,49); return [rand(b+10,b+50),b];     },
+      ()=>{ const b=rand(12,99); return [rand(b+100,b+500),b];   },
+      ()=>{ const b=rand(100,499);return [rand(b+100,b+400),b];  },
+      ()=>{ const b=rand(100,999);return [rand(b+1000,b+3000),b];},
+      ()=>{ const b=rand(1000,4999);return [rand(b+1000,b+4000),b];},
+    ];
+    const [a,b] = gens[tier]();
+    return { a, b, sym:"−", answer:a-b };
+  }
+  if (op === "mul") {
+    const cfgs = [
+      [rand(2,9),   rand(2,9)],
+      [rand(11,99), rand(2,9)],
+      [rand(11,99), rand(2,9)],
+      [rand(11,29), rand(11,29)],
+      [rand(12,59), rand(12,49)],
+      [rand(25,99), rand(25,99)],
+      [rand(100,999),rand(2,9)],
+    ];
+    const [a,b] = cfgs[tier];
+    return { a, b, sym:"×", answer:a*b };
+  }
+  // div — generate clean (no remainder) by multiplying first
+  const gens = [
+    ()=>{ const b=rand(2,9);   const q=rand(2,9);   return [b*q,b,q]; },
+    ()=>{ const b=rand(2,9);   const q=rand(10,19);  return [b*q,b,q]; },
+    ()=>{ const b=rand(2,9);   const q=rand(20,99);  return [b*q,b,q]; },
+    ()=>{ const b=rand(11,29); const q=rand(11,39);  return [b*q,b,q]; },
+    ()=>{ const b=rand(12,49); const q=rand(20,79);  return [b*q,b,q]; },
+    ()=>{ const b=rand(12,99); const q=rand(50,199); return [b*q,b,q]; },
+    ()=>{ const b=rand(25,99); const q=rand(100,299);return [b*q,b,q]; },
+  ];
+  const [a,b,ans] = gens[tier]();
+  return { a, b, sym:"÷", answer:ans };
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
 //  Modes
 // ─────────────────────────────────────────────────────────────────────────────
 const MODES = [
@@ -113,7 +181,11 @@ const MODES = [
     gen:()=>{ const n=rand(1,500); return {n, display:n*n,   answer:n};      } },
   { id:"cbrt",    label:"∛n",   title:"CUBE ROOT",  subtitle:"1–99  ·  UPSC style",       color:"#a78bfa",
     gen:()=>{ const n=rand(1,99);  return {n, display:n*n*n, answer:n};      } },
-  { id:"calc",    label:"CALC", title:"CALCULATOR", subtitle:"Scientific calculator",      color:"#38bdf8",
+  { id:"calc",    label:"CALC",  title:"CALCULATOR", subtitle:"Scientific calculator",      color:"#38bdf8",
+    gen: null },
+  { id:"speed",   label:"SPEED",  title:"SPEED MATH", subtitle:"Progressive mental arithmetic", color:"#f472b6",
+    gen: null },
+  { id:"tables",  label:"TABLE",  title:"TABLES",     subtitle:"1–20 · Complete all 10",         color:"#22d3ee",
     gen: null },
 ];
 
@@ -613,6 +685,417 @@ function QuestionDisplay({ mode, q }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+//  Speed Math Component
+// ─────────────────────────────────────────────────────────────────────────────
+function SpeedMath({ accent, setToast }) {
+  const [subIdx,         setSubIdx]        = useState(0);
+  const [levels,         setLevels]        = useState({add:1,sub:1,mul:1,div:1});
+  const [q,              setQ]             = useState(null);
+  const [qKey,           setQKey]          = useState(0);
+  const [input,          setInput]         = useState("");
+  const [inputAnim,      setInputAnim]     = useState("");
+  const [solved,         setSolved]        = useState(false);
+  const [firstTry,       setFirstTry]      = useState(true);
+  const [wrongMsg,       setWrongMsg]      = useState("");
+  const [score,          setScore]         = useState(0);
+  const [total,          setTotal]         = useState(0);
+  const [streak,         setStreak]        = useState(0);
+  const [bestStreak,     setBestStreak]    = useState(0);
+  const [cardAnim,       setCardAnim]      = useState("");
+  const [showParticles,  setShowParticles] = useState(false);
+  const [elapsed,        setElapsed]       = useState("0.0");
+  const [startTime,      setStartTime]     = useState(Date.now());
+  const [running,        setRunning]       = useState(false);
+  const [scoreAnim,      setScoreAnim]     = useState(false);
+  const inputRef = useRef();
+
+  const sub = SPEED_SUBS[subIdx];
+
+  const newQ = (sIdx, lvl) => {
+    const s = SPEED_SUBS[sIdx];
+    setQ(genSpeedProblem(s.id, lvl));
+    setQKey(k => k+1);
+    setInput(""); setInputAnim(""); setSolved(false); setFirstTry(true);
+    setWrongMsg(""); setCardAnim(""); setShowParticles(false);
+    setStartTime(Date.now()); setElapsed("0.0"); setRunning(true);
+    setTimeout(() => inputRef.current?.focus(), 50);
+  };
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { newQ(0, 1); }, []);
+
+  useEffect(() => {
+    if (!running) return;
+    const id = setInterval(() => setElapsed(((Date.now()-startTime)/1000).toFixed(1)), 1000);
+    return () => clearInterval(id);
+  }, [running, startTime]);
+
+  const switchSub = (i) => {
+    setSubIdx(i);
+    setScore(0); setTotal(0); setStreak(0); setBestStreak(0);
+    newQ(i, levels[SPEED_SUBS[i].id]);
+  };
+
+  const handleSubmit = () => {
+    if (!input || !q) return;
+    const isCorrect = parseInt(input, 10) === q.answer;
+    if (isCorrect) {
+      setRunning(false); setSolved(true); setTotal(t => t+1);
+      if (firstTry) {
+        setScore(s => s+1);
+        const ns = streak+1; setStreak(ns);
+        if (ns > bestStreak) setBestStreak(ns);
+        setScoreAnim(true); setTimeout(() => setScoreAnim(false), 500);
+        setLevels(prev => ({ ...prev, [sub.id]: prev[sub.id]+1 }));
+        if (STREAK_MSGS[ns]) {
+          const tid = Date.now();
+          setToast({ msg:STREAK_MSGS[ns], color:sub.color, id:tid });
+          setTimeout(() => setToast(t => t?.id===tid ? null : t), 2600);
+        }
+      }
+      setCardAnim("anim-pop anim-glow-green");
+      setShowParticles(true);
+      setTimeout(() => setCardAnim(""), 900);
+    } else {
+      if (firstTry) { setFirstTry(false); setStreak(0); }
+      setCardAnim("anim-shake anim-glow-red");
+      setInputAnim("wrong");
+      setWrongMsg(`✗  "${input}" is incorrect — try again`);
+      setTimeout(() => {
+        setCardAnim(""); setInputAnim(""); setInput(""); setWrongMsg("");
+        inputRef.current?.focus();
+      }, 950);
+    }
+  };
+
+  const handleKey = (e) => {
+    if (e.key === "Enter") { if (solved) newQ(subIdx, levels[sub.id]); else handleSubmit(); }
+  };
+
+  const accuracy = total > 0 ? Math.round((score/total)*100) : 0;
+  const level = levels[sub.id];
+  const subAccent = sub.color;
+  const borderColor = solved ? "#00ff88" : "#1a1a2e";
+  if (!q) return null;
+
+  return (
+    <div style={{ width:"100%", maxWidth:"460px", zIndex:1, display:"flex", flexDirection:"column", alignItems:"center" }}>
+
+      {/* Sub-mode tabs */}
+      <div style={{ display:"flex", gap:4, marginBottom:10, background:"#0d0d1c", border:"1px solid #1a1a2e", borderRadius:6, padding:4 }}>
+        {SPEED_SUBS.map((s,i) => {
+          const active = subIdx===i;
+          return (
+            <button key={s.id} onClick={() => switchSub(i)} style={{
+              background: active ? `${s.color}1a` : "transparent",
+              color:       active ? s.color : "#2e2e4a",
+              border:      active ? `1px solid ${s.color}44` : "1px solid transparent",
+              borderRadius:4, padding:"8px 20px",
+              fontSize:"20px", fontFamily:"'Courier New',monospace",
+              fontWeight:"700", transition:"all 0.2s", position:"relative",
+            }}>
+              {s.label}
+              {active && <div style={{ position:"absolute", bottom:"-1px", left:"22%", right:"22%", height:"2px", background:s.color, borderRadius:"2px", boxShadow:`0 0 8px ${s.color}` }}/>}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Stats */}
+      <div style={{ display:"flex", gap:6, marginBottom:14, justifyContent:"center" }}>
+        {[
+          { v:`${score}/${total}`, l:"SCORE",    c:subAccent, flash:scoreAnim },
+          { v:`${streak}`,         l:"STREAK",   c:streak>2?"#ff6b35":"#e0e0d8", fire:streak>2 },
+          { v:`LVL ${level}`,      l:"LEVEL",    c:subAccent },
+          { v:`${accuracy}%`,      l:"ACCURACY", c:"#e0e0d8" },
+        ].map(({ v,l,c,fire,flash }) => (
+          <div key={l} style={{ textAlign:"center", background:"#0d0d1c", border:"1px solid #1a1a2e", borderRadius:4, padding:"9px 14px", minWidth:"65px" }}>
+            <div className={flash?"anim-score":""} style={{ color:c, fontSize:"15px", fontWeight:"700", display:"flex", alignItems:"center", justifyContent:"center", gap:3, transition:"color 0.3s" }}>
+              {v}{fire && <span className="anim-streak" style={{fontSize:"13px",display:"inline-block"}}>🔥</span>}
+            </div>
+            <div style={{ fontSize:"9px", letterSpacing:"2px", color:"#6b6b8a", marginTop:3 }}>{l}</div>
+          </div>
+        ))}
+      </div>
+
+      <TimerBar elapsed={elapsed} accent={subAccent} solved={solved}/>
+
+      {/* Card */}
+      <div className={cardAnim} style={{
+        background:"#0d0d1c", border:`2px solid ${borderColor}`, borderRadius:8,
+        padding:"36px 52px 32px", textAlign:"center", width:"100%", position:"relative",
+        transition:"border-color 0.25s",
+        boxShadow: solved ? "0 8px 48px rgba(0,255,136,0.1)" : "0 8px 40px rgba(0,0,0,0.6)",
+      }}>
+        {showParticles && <Particles color={subAccent}/>}
+
+        <div style={{ display:"inline-block", background:`${subAccent}12`, border:`1px solid ${subAccent}28`, borderRadius:2, padding:"3px 10px", fontSize:"9px", letterSpacing:"4px", color:subAccent, marginBottom:16 }}>
+          SPEED MATH · {sub.sym} · LVL {level}
+        </div>
+
+        {/* Question */}
+        <div key={qKey} className="anim-slide-up" style={{ marginBottom:12 }}>
+          <div style={{
+            display:"flex", alignItems:"center", justifyContent:"center", gap:"16px",
+            fontSize: (q.a > 999 || q.b > 999) ? "40px" : "60px",
+            fontWeight:900, letterSpacing:"-2px", lineHeight:1,
+          }}>
+            <span>{q.a.toLocaleString()}</span>
+            <span style={{ color:subAccent, fontSize:"0.75em" }}>{q.sym}</span>
+            <span>{q.b.toLocaleString()}</span>
+          </div>
+          <div style={{ fontSize:12, color:"#1a1a30", marginTop:8 }}>= ?</div>
+        </div>
+
+        {!solved && (<>
+          <input
+            ref={inputRef} autoFocus type="number"
+            value={input} onChange={e => setInput(e.target.value)} onKeyDown={handleKey}
+            placeholder="your answer..."
+            className={inputAnim==="wrong" ? "anim-wrong-inp" : ""}
+            style={{ width:"100%", background:"#080810", border:"1px solid #1a1a2e", borderRadius:4, padding:"14px 16px", fontSize:26, fontFamily:"'Courier New',monospace", color:subAccent, textAlign:"center", outline:"none", letterSpacing:"3px", transition:"border-color 0.2s, box-shadow 0.2s" }}
+            onFocus={e=>{ e.target.style.borderColor=subAccent+"55"; e.target.style.boxShadow=`0 0 16px ${subAccent}22`; }}
+            onBlur={e=>{ e.target.style.borderColor="#1a1a2e"; e.target.style.boxShadow="none"; }}
+          />
+          {wrongMsg && <div className="anim-slide-up" style={{ marginTop:10, fontSize:12, color:"#ff4455", letterSpacing:"1px" }}>{wrongMsg}</div>}
+        </>)}
+
+        {solved && (
+          <div className="anim-slide-up">
+            <div style={{ fontSize:54, fontWeight:900, color:"#00ff88", marginBottom:10, textShadow:"0 0 24px #00ff8855" }}>✓</div>
+            <div style={{ fontSize:14, color:"#555", marginBottom:6 }}>
+              Correct!&nbsp;
+              {firstTry
+                ? <span style={{ color:subAccent }}>First try! 🎯  → LVL {level}</span>
+                : <span style={{ color:"#3a3a5a" }}>Keep practising</span>
+              }
+            </div>
+            <div style={{ fontSize:12, color:"#6b6b8a", display:"flex", justifyContent:"center", gap:16, marginTop:4 }}>
+              <span>Answer: <span style={{ color:"#00ff88", fontWeight:700 }}>{q.answer.toLocaleString()}</span></span>
+              <span>·</span>
+              <span>Time: <span style={{ color:subAccent, fontWeight:700 }}>{elapsed}s</span></span>
+            </div>
+          </div>
+        )}
+
+        <div style={{ marginTop:24, display:"flex", gap:10, justifyContent:"center" }}>
+          {!solved && <button onClick={handleSubmit} style={{ background:subAccent, color:"#07070f", border:"none", borderRadius:3, padding:"13px 36px", fontSize:13, fontFamily:"'Courier New',monospace", fontWeight:700, letterSpacing:"2px", textTransform:"uppercase", boxShadow:`0 4px 18px ${subAccent}44` }}>Submit</button>}
+          {solved  && <button onClick={() => newQ(subIdx, levels[sub.id])} style={{ background:subAccent, color:"#07070f", border:"none", borderRadius:3, padding:"13px 48px", fontSize:13, fontFamily:"'Courier New',monospace", fontWeight:700, letterSpacing:"2px", textTransform:"uppercase", boxShadow:`0 4px 18px ${subAccent}44` }}>Next →</button>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Tables Component
+// ─────────────────────────────────────────────────────────────────────────────
+function Tables({ accent, setToast }) {
+  const [tableNum,      setTableNum]      = useState(null);
+  const [queue,         setQueue]         = useState([]);
+  const [qIdx,          setQIdx]          = useState(0);
+  const [qKey,          setQKey]          = useState(0);
+  const [input,         setInput]         = useState("");
+  const [inputAnim,     setInputAnim]     = useState("");
+  const [wrongMsg,      setWrongMsg]      = useState("");
+  const [cardAnim,      setCardAnim]      = useState("");
+  const [showParticles, setShowParticles] = useState(false);
+  const [solved,        setSolved]        = useState(false);
+  const [done,          setDone]          = useState(false);
+  const [firstTry,      setFirstTry]      = useState(true);
+  const [perfectCount,  setPerfectCount]  = useState(0);
+  const [elapsed,       setElapsed]       = useState("0.0");
+  const [startTime,     setStartTime]     = useState(Date.now());
+  const [running,       setRunning]       = useState(false);
+  const inputRef = useRef();
+
+  const startTable = (n) => {
+    const shuffled = Array.from({length:10}, (_,i) => i+1).sort(() => Math.random()-0.5);
+    setTableNum(n); setQueue(shuffled); setQIdx(0); setQKey(0);
+    setInput(""); setInputAnim(""); setWrongMsg("");
+    setCardAnim(""); setShowParticles(false);
+    setSolved(false); setDone(false);
+    setFirstTry(true); setPerfectCount(0);
+    setStartTime(Date.now()); setElapsed("0.0"); setRunning(true);
+    setTimeout(() => inputRef.current?.focus(), 50);
+  };
+
+  useEffect(() => {
+    if (!running) return;
+    const id = setInterval(() => setElapsed(((Date.now()-startTime)/1000).toFixed(1)), 1000);
+    return () => clearInterval(id);
+  }, [running, startTime]);
+
+  const mult = queue[qIdx] ?? 1;
+
+  const handleSubmit = () => {
+    if (!input || solved || done || !tableNum) return;
+    const isCorrect = parseInt(input, 10) === tableNum * mult;
+    if (isCorrect) {
+      const newPerfect = firstTry ? perfectCount + 1 : perfectCount;
+      setCardAnim("anim-pop anim-glow-green"); setShowParticles(true);
+      setTimeout(() => setCardAnim(""), 900);
+      if (qIdx + 1 >= 10) {
+        setRunning(false); setDone(true); setPerfectCount(newPerfect);
+        if (newPerfect === 10) {
+          const tid = Date.now();
+          setToast({ msg:"PERFECT TABLE! 🏆", color:accent, id:tid });
+          setTimeout(() => setToast(t => t?.id===tid ? null : t), 2600);
+        }
+      } else {
+        setPerfectCount(newPerfect); setSolved(true);
+        setTimeout(() => {
+          setQIdx(i => i+1); setQKey(k => k+1);
+          setInput(""); setInputAnim(""); setSolved(false);
+          setFirstTry(true); setWrongMsg(""); setCardAnim(""); setShowParticles(false);
+          setTimeout(() => inputRef.current?.focus(), 50);
+        }, 750);
+      }
+    } else {
+      if (firstTry) setFirstTry(false);
+      setCardAnim("anim-shake anim-glow-red"); setInputAnim("wrong");
+      setWrongMsg(`✗  "${input}" — try again`);
+      setTimeout(() => {
+        setCardAnim(""); setInputAnim(""); setInput(""); setWrongMsg("");
+        inputRef.current?.focus();
+      }, 950);
+    }
+  };
+
+  const handleKey = (e) => { if (e.key === "Enter" && !solved) handleSubmit(); };
+
+  // ── PICKER ──
+  if (tableNum === null) return (
+    <div style={{ width:"100%", maxWidth:"460px", zIndex:1 }}>
+      <div style={{ textAlign:"center", marginBottom:16 }}>
+        <div style={{ fontSize:"11px", letterSpacing:"4px", color:accent, marginBottom:4 }}>CHOOSE A TABLE</div>
+        <div style={{ fontSize:"10px", color:"#2a2a4a", letterSpacing:"2px" }}>ALL 10 MULTIPLICATIONS · RANDOM ORDER</div>
+      </div>
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(5,1fr)", gap:8 }}>
+        {TABLES_NUMS.map(n => (
+          <button key={n} onClick={() => startTable(n)} style={{
+            background:"#0d0d1c", border:`1px solid ${accent}22`, borderRadius:8,
+            padding:"18px 0", fontSize:"20px", fontFamily:"'Courier New',monospace",
+            fontWeight:"700", color:"#e0e0d8", transition:"all 0.15s",
+          }}
+          onMouseEnter={e=>{ e.currentTarget.style.background=`${accent}18`; e.currentTarget.style.color=accent; e.currentTarget.style.borderColor=`${accent}55`; e.currentTarget.style.boxShadow=`0 0 14px ${accent}33`; }}
+          onMouseLeave={e=>{ e.currentTarget.style.background="#0d0d1c"; e.currentTarget.style.color="#e0e0d8"; e.currentTarget.style.borderColor=`${accent}22`; e.currentTarget.style.boxShadow="none"; }}
+          >{n}</button>
+        ))}
+      </div>
+    </div>
+  );
+
+  // ── DONE ──
+  if (done) {
+    const perfect = perfectCount === 10;
+    return (
+      <div style={{ width:"100%", maxWidth:"460px", zIndex:1 }}>
+        <div className={cardAnim} style={{
+          background:"#0d0d1c", border:`2px solid ${perfect?"#00ff88":"#1a1a2e"}`,
+          borderRadius:8, padding:"44px 48px 36px", textAlign:"center", position:"relative",
+          boxShadow: perfect ? "0 8px 48px rgba(0,255,136,0.12)" : "0 8px 40px rgba(0,0,0,0.6)",
+        }}>
+          {showParticles && <Particles color={accent}/>}
+          <div style={{ fontSize:56, marginBottom:12 }}>{perfect ? "🏆" : "✓"}</div>
+          <div style={{ fontSize:"22px", fontWeight:900, color:"#fff", marginBottom:8, letterSpacing:"-1px" }}>
+            Table of {tableNum} — Done!
+          </div>
+          <div style={{ fontSize:"13px", color:"#555", marginBottom:10 }}>
+            {perfect
+              ? <span style={{ color:accent }}>Perfect! All 10 on first try 🎯</span>
+              : <span>{perfectCount}<span style={{ color:"#333" }}>/10</span> on first try</span>
+            }
+          </div>
+          <div style={{ fontSize:"12px", color:"#6b6b8a", marginBottom:28 }}>
+            Completed in <span style={{ color:accent, fontWeight:700 }}>{elapsed}s</span>
+          </div>
+          <div style={{ display:"flex", gap:10, justifyContent:"center" }}>
+            <button onClick={() => startTable(tableNum)} style={{ background:accent, color:"#07070f", border:"none", borderRadius:3, padding:"13px 28px", fontSize:13, fontFamily:"'Courier New',monospace", fontWeight:700, letterSpacing:"2px", textTransform:"uppercase", boxShadow:`0 4px 18px ${accent}44` }}>Retry ↺</button>
+            <button onClick={() => setTableNum(null)} style={{ background:"transparent", color:"#4a4a6a", border:"1px solid #1a1a2e", borderRadius:3, padding:"13px 28px", fontSize:13, fontFamily:"'Courier New',monospace", letterSpacing:"2px", textTransform:"uppercase" }}>Change ←</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── QUESTION ──
+  const borderColor = solved ? "#00ff88" : "#1a1a2e";
+  return (
+    <div style={{ width:"100%", maxWidth:"460px", zIndex:1, display:"flex", flexDirection:"column", alignItems:"center" }}>
+
+      {/* Header */}
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", width:"100%", marginBottom:8 }}>
+        <button onClick={() => setTableNum(null)} style={{ background:"transparent", color:"#2e2e4a", border:"1px solid #1a1a2e", borderRadius:4, padding:"6px 14px", fontSize:11, fontFamily:"'Courier New',monospace", letterSpacing:"2px" }}>← BACK</button>
+        <div style={{ fontSize:"11px", letterSpacing:"3px", color:"#4a4a6a" }}>
+          TABLE OF <span style={{ color:accent, fontWeight:700 }}>{tableNum}</span>
+        </div>
+        <div style={{ fontSize:"13px", fontFamily:"'Courier New',monospace", color:"#e0e0d8", fontWeight:700 }}>
+          {qIdx+1}<span style={{ color:"#333" }}>/10</span>
+        </div>
+      </div>
+
+      {/* Progress bar */}
+      <div style={{ width:"100%", height:"4px", background:"#111128", borderRadius:3, overflow:"hidden", marginBottom:12 }}>
+        <div style={{ height:"100%", width:`${(qIdx/10)*100}%`, background:`linear-gradient(90deg,${accent}88,${accent})`, borderRadius:3, transition:"width 0.4s ease", boxShadow:`0 0 6px ${accent}88` }}/>
+      </div>
+
+      <TimerBar elapsed={elapsed} accent={accent} solved={false}/>
+
+      {/* Card */}
+      <div className={cardAnim} style={{
+        background:"#0d0d1c", border:`2px solid ${borderColor}`, borderRadius:8,
+        padding:"36px 52px 32px", textAlign:"center", width:"100%", position:"relative",
+        transition:"border-color 0.25s",
+        boxShadow: solved ? "0 8px 48px rgba(0,255,136,0.1)" : "0 8px 40px rgba(0,0,0,0.6)",
+      }}>
+        {showParticles && <Particles color={accent}/>}
+        <div style={{ display:"inline-block", background:`${accent}12`, border:`1px solid ${accent}28`, borderRadius:2, padding:"3px 10px", fontSize:"9px", letterSpacing:"4px", color:accent, marginBottom:16 }}>
+          TABLES · {qIdx+1} OF 10
+        </div>
+
+        <div key={qKey} className="anim-slide-up" style={{ marginBottom:12 }}>
+          <div style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:"16px", fontSize:"64px", fontWeight:900, letterSpacing:"-2px", lineHeight:1 }}>
+            <span>{tableNum}</span>
+            <span style={{ color:accent, fontSize:"0.75em" }}>×</span>
+            <span>{mult}</span>
+          </div>
+          <div style={{ fontSize:12, color:"#1a1a30", marginTop:8 }}>= ?</div>
+        </div>
+
+        {!solved && (<>
+          <input
+            ref={inputRef} autoFocus type="number"
+            value={input} onChange={e => setInput(e.target.value)} onKeyDown={handleKey}
+            placeholder="your answer..."
+            className={inputAnim==="wrong" ? "anim-wrong-inp" : ""}
+            style={{ width:"100%", background:"#080810", border:"1px solid #1a1a2e", borderRadius:4, padding:"14px 16px", fontSize:26, fontFamily:"'Courier New',monospace", color:accent, textAlign:"center", outline:"none", letterSpacing:"3px", transition:"border-color 0.2s, box-shadow 0.2s" }}
+            onFocus={e=>{ e.target.style.borderColor=accent+"55"; e.target.style.boxShadow=`0 0 16px ${accent}22`; }}
+            onBlur={e=>{ e.target.style.borderColor="#1a1a2e"; e.target.style.boxShadow="none"; }}
+          />
+          {wrongMsg && <div className="anim-slide-up" style={{ marginTop:10, fontSize:12, color:"#ff4455", letterSpacing:"1px" }}>{wrongMsg}</div>}
+        </>)}
+
+        {solved && (
+          <div className="anim-slide-up">
+            <div style={{ fontSize:42, fontWeight:900, color:"#00ff88", textShadow:"0 0 24px #00ff8855" }}>✓</div>
+            <div style={{ fontSize:13, color:"#555", marginTop:6 }}>
+              {firstTry ? <span style={{ color:accent }}>Next up →</span> : <span style={{ color:"#3a3a5a" }}>Moving on...</span>}
+            </div>
+          </div>
+        )}
+
+        {!solved && (
+          <div style={{ marginTop:24, display:"flex", justifyContent:"center" }}>
+            <button onClick={handleSubmit} style={{ background:accent, color:"#07070f", border:"none", borderRadius:3, padding:"13px 36px", fontSize:13, fontFamily:"'Courier New',monospace", fontWeight:700, letterSpacing:"2px", textTransform:"uppercase", boxShadow:`0 4px 18px ${accent}44` }}>Submit</button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 //  Main App
 // ─────────────────────────────────────────────────────────────────────────────
 export default function SquareQuiz() {
@@ -638,9 +1121,11 @@ export default function SquareQuiz() {
   const [scoreAnim,     setScoreAnim]     = useState(false);
   const inputRef = useRef();
 
-  const mode   = MODES[modeIdx];
-  const accent = mode.color;
-  const isCalc = mode.id === "calc";
+  const mode    = MODES[modeIdx];
+  const accent  = mode.color;
+  const isCalc   = mode.id === "calc";
+  const isSpeed  = mode.id === "speed";
+  const isTables = mode.id === "tables";
 
   const newQuestion = (idx) => {
     const m = MODES[idx];
@@ -655,7 +1140,7 @@ export default function SquareQuiz() {
   };
 
   useEffect(() => {
-    if (!isCalc) {
+    if (MODES[modeIdx].gen) {
       setScore(0); setTotal(0); setStreak(0); setBestStreak(0);
       newQuestion(modeIdx);
     }
@@ -664,12 +1149,12 @@ export default function SquareQuiz() {
 
   // Timer — updates every 1s to keep display stable (bar uses CSS transition for smoothness)
   useEffect(() => {
-    if (!running || isCalc) return;
+    if (!running || isCalc || isSpeed || isTables) return;
     const id = setInterval(() => {
       setElapsed(((Date.now() - startTime) / 1000).toFixed(1));
     }, 1000);
     return () => clearInterval(id);
-  }, [running, startTime, isCalc]);
+  }, [running, startTime, isCalc, isSpeed, isTables]);
 
   const handleSubmit = () => {
     if (!input || !q) return;
@@ -708,7 +1193,7 @@ export default function SquareQuiz() {
   };
 
   const accuracy = total > 0 ? Math.round((score/total)*100) : 0;
-  if (!q && !isCalc) return null;
+  if (!q && !isCalc && !isSpeed && !isTables) return null;
 
   const borderColor = solved ? "#00ff88" : "#1a1a2e";
 
@@ -787,10 +1272,16 @@ export default function SquareQuiz() {
         </div>
 
         {/* ── CALCULATOR MODE ── */}
-        {isCalc && <Calculator accent={accent}/>}
+        {isCalc  && <Calculator accent={accent}/>}
+
+        {/* ── SPEED MATH MODE ── */}
+        {isSpeed  && <SpeedMath accent={accent} setToast={setToast}/>}
+
+        {/* ── TABLES MODE ── */}
+        {isTables && <Tables accent={accent} setToast={setToast}/>}
 
         {/* ── QUIZ MODE ── */}
-        {!isCalc && (<>
+        {!isCalc && !isSpeed && !isTables && (<>
           {/* Stats */}
           <div style={{display:"flex",gap:"6px",marginBottom:"14px",zIndex:1}}>
             {[
@@ -962,6 +1453,7 @@ export default function SquareQuiz() {
             ENTER TO SUBMIT  ·  ENTER AGAIN FOR NEXT
           </div>
         </>)}
+
 
       {/* ── Crafted by credit — fixed bottom right ── */}
       <div style={{
