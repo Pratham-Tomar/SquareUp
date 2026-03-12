@@ -25,8 +25,16 @@
 
 <br/>
 
+### ⚡ Live Demo
+
+<a href="https://square-up-bice.vercel.app/" target="_blank">
+  <img src="https://img.shields.io/badge/▶%20%20PLAY%20NOW-%20SquareUp%20Live-ffc200?style=for-the-badge&logoColor=black" alt="Play SquareUp Live" />
+</a>
+
+<br/><br/>
+
 > A browser-based mental math trainer for UPSC, SSC, CAT, and Banking PO aspirants.
-> Drills squares, cubes, square roots, and cube roots — with real-time feedback, animated hints, and a built-in scientific calculator.
+> Drills squares, cubes, square roots, cube roots, speed arithmetic, and multiplication tables — with real-time feedback, animated hints, and a built-in scientific calculator.
 >
 > **No login. No ads. No fluff. Just math.**
 
@@ -273,6 +281,12 @@ MIT © [Pratham Tomar](https://github.com/Pratham-Tomar)
 <div align="center">
 
 Built to make competitive exam prep faster and more effective.
+
+<a href="https://square-up-bice.vercel.app/" target="_blank">
+  <img src="https://img.shields.io/badge/▶%20%20OPEN%20LIVE%20APP-square--up--bice.vercel.app-ffc200?style=for-the-badge" alt="Open Live App" />
+</a>
+
+<br/><br/>
 
 **Star this repo ⭐ if it helped you crack a question faster.**
 
