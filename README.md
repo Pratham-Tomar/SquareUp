@@ -1,6 +1,7 @@
 <div align="center">
 
-```
+<a href="https://square-up-bice.vercel.app/" target="_blank">
+<pre>
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║                                                                              ║
 ║   ███████╗ ██████╗ ██╗   ██╗ █████╗ ██████╗ ███████╗██╗   ██╗██████╗       ║
@@ -11,8 +12,11 @@
 ║   ╚══════╝ ╚══▀▀═╝  ╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝ ╚═════╝ ╚═╝           ║
 ║                                                                              ║
 ║          ·  Mental  Math  Trainer  ·  Competitive  Exam  Prep  ·            ║
+║                                                                              ║
+║              ▶  Click  anywhere  here  to  open  the  live  app             ║
 ╚══════════════════════════════════════════════════════════════════════════════╝
-```
+</pre>
+</a>
 
 <p>
   <img src="https://img.shields.io/badge/React-19-61dafb?style=for-the-badge&logo=react&logoColor=black" />
