@@ -112,6 +112,28 @@ const TABLES_NUMS = Array.from({length:20}, (_,i) => i+1);
 // ─────────────────────────────────────────────────────────────────────────────
 const UNIT_CYCLES = {2:[2,4,8,6], 3:[3,9,7,1], 7:[7,9,3,1], 8:[8,4,2,6]};
 
+const modPow = (base, exp, mod) => {
+  if (mod === 1) return 0;
+  let result = 1; base = base % mod;
+  while (exp > 0) {
+    if (exp % 2 === 1) result = (result * base) % mod;
+    exp = Math.floor(exp / 2);
+    base = (base * base) % mod;
+  }
+  return result;
+};
+
+const getRemCycle = (base, divisor) => {
+  const cycle = [];
+  let cur = base % divisor;
+  for (let i = 0; i < divisor + 2; i++) {
+    cycle.push(cur);
+    if (i > 0 && cur === cycle[0]) { cycle.pop(); break; }
+    cur = (cur * base) % divisor;
+  }
+  return cycle;
+};
+
 const calcUnitDigitPower = (base, power) => {
   const ud = base % 10;
   if (power === 0) return 1;
@@ -130,6 +152,15 @@ const genUnitProblem = (op) => {
     const answer = nums.reduce((acc, n) => (acc * n) % 10, 1);
     return { nums, answer, op };
   }
+  if (op === "rem") {
+    const bases = [2, 3, 4, 5, 6, 7, 8, 9];
+    const divisors = [3, 7, 9, 11, 13];
+    const base = bases[rand(0, bases.length - 1)];
+    const divisor = divisors[rand(0, divisors.length - 1)];
+    const power = rand(50, 999);
+    const answer = modPow(base, power, divisor);
+    return { base, power, divisor, answer, op };
+  }
   // For power — pick a base whose unit digit has an interesting cycle (not trivial 0,1,5,6)
   const interestingUnits = [2,3,4,7,8,9];
   const unitDigit = interestingUnits[rand(0, interestingUnits.length - 1)];
@@ -141,8 +172,9 @@ const genUnitProblem = (op) => {
 };
 
 const UNIT_SUBS = [
-  { id:"mul", label:"MULTIPLY", color:"#fb7185" },
-  { id:"pow", label:"POWER",    color:"#fb7185" },
+  { id:"mul", label:"MULTIPLY",  color:"#fb7185" },
+  { id:"pow", label:"POWER",     color:"#fb7185" },
+  { id:"rem", label:"REMAINDER", color:"#fb7185" },
 ];
 
 const SPEED_SUBS = [
@@ -704,6 +736,20 @@ function UnitDigitHint({ q, accent }) {
   const hl = v => <span style={{color:"#ddd"}}>{v}</span>;
   const or = v => <span style={{color:"#ff6b35"}}>{v}</span>;
   const dm = v => <span style={{color:"#333"}}>{v}</span>;
+
+  if (q.op === "rem") {
+    const cycle = getRemCycle(q.base, q.divisor);
+    const cycleLen = cycle.length;
+    const posInCycle = q.power % cycleLen;
+    return (<>
+      <div style={lb}>REMAINDER — CYCLICITY METHOD</div>
+      <div style={rw}>Find pattern: remainders of {hl(q.base)}^n ÷ {hl(q.divisor)}</div>
+      <div style={rw}>Cycle: [{cycle.map((c,i)=><span key={i}>{i>0&&","}{or(c)}</span>)}] {dm(`(repeats every ${cycleLen})`)}</div>
+      <div style={rw}>Power {hl(q.power)} mod {hl(cycleLen)} = {hl(posInCycle === 0 ? `0 → use ${cycleLen}th` : posInCycle)}</div>
+      <div style={rw}>→ remainder = {gr(q.answer)}</div>
+      <div style={{color:"#3a3a5a",fontSize:"12px",marginTop:"8px"}}>Answer: {gr(q.answer)}</div>
+    </>);
+  }
 
   if (q.op === "mul") {
     const unitDigits = q.nums.map(n => n % 10);
@@ -1346,6 +1392,16 @@ function UnitDigit({ accent, setToast }) {
                 </span>
               ))}
             </div>
+          ) : q.op === "rem" ? (
+            <div style={{ lineHeight:1.3 }}>
+              <div style={{ fontSize:"13px", color:"#4a4a6a", letterSpacing:"1px", marginBottom:8 }}>What is the remainder when</div>
+              <div style={{ fontSize:"52px", fontWeight:900, letterSpacing:"-2px", lineHeight:1 }}>
+                {q.base}
+                <span style={{ color:accent, fontSize:"26px", verticalAlign:"super", letterSpacing:"-1px" }}>{q.power}</span>
+                <span style={{ color:"#4a4a6a", fontSize:"32px", margin:"0 6px" }}>÷</span>
+                <span>{q.divisor}</span>
+              </div>
+            </div>
           ) : (
             <div style={{ fontSize:"64px", fontWeight:900, letterSpacing:"-2px", lineHeight:1 }}>
               {q.base}
@@ -1354,14 +1410,14 @@ function UnitDigit({ accent, setToast }) {
           )}
         </div>
         <div style={{ fontSize:12, color:"#4a4a6a", marginBottom:20 }}>
-          Find the unit place digit (0–9)
+          {q.op === "rem" ? `Find the remainder (0–${q.divisor - 1})` : "Find the unit place digit (0–9)"}
         </div>
 
         {!solved && (<>
           <input
             ref={inputRef} autoFocus type="number"
             value={input} onChange={e => setInput(e.target.value)} onKeyDown={handleKey}
-            placeholder="0–9"
+            placeholder={q.op === "rem" ? `0–${q.divisor - 1}` : "0–9"}
             className={inputAnim==="wrong" ? "anim-wrong-inp" : ""}
             style={{ width:"120px", background:"#080810", border:"1px solid #1a1a2e", borderRadius:4, padding:"14px 16px", fontSize:36, fontFamily:"'Courier New',monospace", color:accent, textAlign:"center", outline:"none", letterSpacing:"3px", transition:"border-color 0.2s, box-shadow 0.2s" }}
             onFocus={e=>{ e.target.style.borderColor=accent+"55"; e.target.style.boxShadow=`0 0 16px ${accent}22`; }}
@@ -1381,7 +1437,7 @@ function UnitDigit({ accent, setToast }) {
               }
             </div>
             <div style={{ fontSize:12, color:"#6b6b8a", display:"flex", justifyContent:"center", gap:16, marginTop:4 }}>
-              <span>Unit digit: <span style={{ color:"#00ff88", fontWeight:700 }}>{q.answer}</span></span>
+              <span>{q.op === "rem" ? "Remainder" : "Unit digit"}: <span style={{ color:"#00ff88", fontWeight:700 }}>{q.answer}</span></span>
               <span>·</span>
               <span>Time: <span style={{ color:accent, fontWeight:700 }}>{elapsed}s</span></span>
             </div>
