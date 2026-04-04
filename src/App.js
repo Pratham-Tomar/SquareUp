@@ -107,6 +107,44 @@ const STREAK_MSGS = {3:"TRIPLE! 🎯",5:"ON FIRE! 🔥",10:"UNSTOPPABLE! ⚡",15
 // ─────────────────────────────────────────────────────────────────────────────
 const TABLES_NUMS = Array.from({length:20}, (_,i) => i+1);
 
+// ─────────────────────────────────────────────────────────────────────────────
+//  Unit Digit helpers
+// ─────────────────────────────────────────────────────────────────────────────
+const UNIT_CYCLES = {2:[2,4,8,6], 3:[3,9,7,1], 7:[7,9,3,1], 8:[8,4,2,6]};
+
+const calcUnitDigitPower = (base, power) => {
+  const ud = base % 10;
+  if (power === 0) return 1;
+  if ([0,1,5,6].includes(ud)) return ud;
+  if (ud === 4) return power % 2 === 0 ? 6 : 4;
+  if (ud === 9) return power % 2 === 0 ? 1 : 9;
+  const cycle = UNIT_CYCLES[ud];
+  const rem = power % 4;
+  return cycle[rem === 0 ? 3 : rem - 1];
+};
+
+const genUnitProblem = (op) => {
+  if (op === "mul") {
+    const count = rand(3, 4);
+    const nums = Array.from({length: count}, () => rand(12, 99));
+    const answer = nums.reduce((acc, n) => (acc * n) % 10, 1);
+    return { nums, answer, op };
+  }
+  // For power — pick a base whose unit digit has an interesting cycle (not trivial 0,1,5,6)
+  const interestingUnits = [2,3,4,7,8,9];
+  const unitDigit = interestingUnits[rand(0, interestingUnits.length - 1)];
+  const tens = rand(1, 9);
+  const base = tens * 10 + unitDigit;
+  const power = rand(3, 49);
+  const answer = calcUnitDigitPower(base, power);
+  return { base, power, answer, op };
+};
+
+const UNIT_SUBS = [
+  { id:"mul", label:"MULTIPLY", color:"#fb7185" },
+  { id:"pow", label:"POWER",    color:"#fb7185" },
+];
+
 const SPEED_SUBS = [
   { id:"add", label:"＋", sym:"+", color:"#00e87a" },
   { id:"sub", label:"－", sym:"−", color:"#ffc200" },
@@ -186,6 +224,8 @@ const MODES = [
   { id:"speed",   label:"SPEED",  title:"SPEED MATH", subtitle:"Progressive mental arithmetic", color:"#f472b6",
     gen: null },
   { id:"tables",  label:"TABLE",  title:"TABLES",     subtitle:"1–20 · Complete all 10",         color:"#22d3ee",
+    gen: null },
+  { id:"unit",    label:"UNIT",   title:"UNIT DIGIT", subtitle:"Find the unit place digit",         color:"#fb7185",
     gen: null },
 ];
 
@@ -655,6 +695,61 @@ function HintPanel({ modeId, n, accent }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+//  Unit Digit Hint Panel
+// ─────────────────────────────────────────────────────────────────────────────
+function UnitDigitHint({ q, accent }) {
+  const lb = { color:accent, letterSpacing:"2px", fontSize:"11px", marginBottom:"14px", fontWeight:"700" };
+  const rw = { color:"#555", lineHeight:"2.1", fontSize:"13px" };
+  const gr = v => <span style={{color:"#00ff88",fontWeight:"700"}}>{v}</span>;
+  const hl = v => <span style={{color:"#ddd"}}>{v}</span>;
+  const or = v => <span style={{color:"#ff6b35"}}>{v}</span>;
+  const dm = v => <span style={{color:"#333"}}>{v}</span>;
+
+  if (q.op === "mul") {
+    const unitDigits = q.nums.map(n => n % 10);
+    const steps = [];
+    let acc = unitDigits[0];
+    for (let i = 1; i < unitDigits.length; i++) {
+      const prev = acc;
+      const full = prev * unitDigits[i];
+      acc = full % 10;
+      steps.push({ a: prev, b: unitDigits[i], full, result: acc });
+    }
+    return (<>
+      <div style={lb}>UNIT DIGIT — MULTIPLICATION</div>
+      <div style={rw}>Step 1 — extract unit digits: {unitDigits.map((d,i) => <span key={i}>{i>0 && <span style={{color:"#444"}}> × </span>}{hl(d)}</span>)}</div>
+      {steps.map((s, i) => (
+        <div key={i} style={rw}>Step {i+2} — {hl(s.a)} × {hl(s.b)} = {hl(s.full)} → unit digit {gr(s.result)}</div>
+      ))}
+      <div style={{color:"#3a3a5a",fontSize:"12px",marginTop:"8px"}}>Answer: {gr(q.answer)}</div>
+    </>);
+  }
+
+  const ud = q.base % 10;
+  return (<>
+    <div style={lb}>UNIT DIGIT — POWER (CYCLICITY)</div>
+    <div style={rw}>Base {hl(q.base)} → unit digit of base = {hl(ud)}</div>
+    {[0,1,5,6].includes(ud) && (
+      <div style={rw}>Unit digit {hl(ud)} is fixed — always gives {gr(ud)} for any power</div>
+    )}
+    {ud === 4 && <>
+      <div style={rw}>Cycle of {hl(4)}: [{or(4)},{or(6)}] {dm("(cycle of 2)")}</div>
+      <div style={rw}>Power {hl(q.power)} mod 2 = {hl(q.power % 2)} → {gr(q.answer)}</div>
+    </>}
+    {ud === 9 && <>
+      <div style={rw}>Cycle of {hl(9)}: [{or(9)},{or(1)}] {dm("(cycle of 2)")}</div>
+      <div style={rw}>Power {hl(q.power)} mod 2 = {hl(q.power % 2)} → {gr(q.answer)}</div>
+    </>}
+    {[2,3,7,8].includes(ud) && <>
+      <div style={rw}>Cycle of {hl(ud)}: [{UNIT_CYCLES[ud].map((c,i)=><span key={i}>{i>0&&","}{or(c)}</span>)}] {dm("(cycle of 4)")}</div>
+      <div style={rw}>Power {hl(q.power)} mod 4 = {hl(q.power%4===0?"0 → use 4th":q.power%4)}</div>
+      <div style={rw}>→ unit digit = {gr(q.answer)}</div>
+    </>}
+    <div style={{color:"#3a3a5a",fontSize:"12px",marginTop:"8px"}}>Answer: {gr(q.answer)}</div>
+  </>);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 //  Question Display
 // ─────────────────────────────────────────────────────────────────────────────
 function QuestionDisplay({ mode, q }) {
@@ -1096,6 +1191,229 @@ function Tables({ accent, setToast }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+//  Unit Digit Component
+// ─────────────────────────────────────────────────────────────────────────────
+function UnitDigit({ accent, setToast }) {
+  const [subIdx,        setSubIdx]       = useState(0);
+  const [q,             setQ]            = useState(null);
+  const [qKey,          setQKey]         = useState(0);
+  const [input,         setInput]        = useState("");
+  const [inputAnim,     setInputAnim]    = useState("");
+  const [solved,        setSolved]       = useState(false);
+  const [firstTry,      setFirstTry]     = useState(true);
+  const [wrongMsg,      setWrongMsg]     = useState("");
+  const [score,         setScore]        = useState(0);
+  const [total,         setTotal]        = useState(0);
+  const [streak,        setStreak]       = useState(0);
+  const [bestStreak,    setBestStreak]   = useState(0);
+  const [cardAnim,      setCardAnim]     = useState("");
+  const [showParticles, setShowParticles]= useState(false);
+  const [elapsed,       setElapsed]      = useState("0.0");
+  const [startTime,     setStartTime]    = useState(Date.now());
+  const [running,       setRunning]      = useState(false);
+  const [scoreAnim,     setScoreAnim]    = useState(false);
+  const [showHint,      setShowHint]     = useState(false);
+  const inputRef = useRef();
+
+  const sub = UNIT_SUBS[subIdx];
+
+  const newQ = (sIdx) => {
+    setQ(genUnitProblem(UNIT_SUBS[sIdx].id));
+    setQKey(k => k+1);
+    setInput(""); setInputAnim(""); setSolved(false); setFirstTry(true);
+    setWrongMsg(""); setCardAnim(""); setShowParticles(false); setShowHint(false);
+    setStartTime(Date.now()); setElapsed("0.0"); setRunning(true);
+    setTimeout(() => inputRef.current?.focus(), 50);
+  };
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { newQ(0); }, []);
+
+  useEffect(() => {
+    if (!running) return;
+    const id = setInterval(() => setElapsed(((Date.now()-startTime)/1000).toFixed(1)), 1000);
+    return () => clearInterval(id);
+  }, [running, startTime]);
+
+  const switchSub = (i) => {
+    setSubIdx(i);
+    setScore(0); setTotal(0); setStreak(0); setBestStreak(0);
+    newQ(i);
+  };
+
+  const handleSubmit = () => {
+    if (!input || !q) return;
+    const isCorrect = parseInt(input, 10) === q.answer;
+    if (isCorrect) {
+      setRunning(false); setSolved(true); setTotal(t => t+1);
+      if (firstTry) {
+        setScore(s => s+1);
+        const ns = streak+1; setStreak(ns);
+        if (ns > bestStreak) setBestStreak(ns);
+        setScoreAnim(true); setTimeout(() => setScoreAnim(false), 500);
+        if (STREAK_MSGS[ns]) {
+          const tid = Date.now();
+          setToast({ msg:STREAK_MSGS[ns], color:accent, id:tid });
+          setTimeout(() => setToast(t => t?.id===tid ? null : t), 2600);
+        }
+      }
+      setCardAnim("anim-pop anim-glow-green");
+      setShowParticles(true);
+      setTimeout(() => setCardAnim(""), 900);
+    } else {
+      if (firstTry) { setFirstTry(false); setStreak(0); }
+      setCardAnim("anim-shake anim-glow-red");
+      setInputAnim("wrong");
+      setWrongMsg(`✗  "${input}" is incorrect — try again`);
+      setTimeout(() => {
+        setCardAnim(""); setInputAnim(""); setInput(""); setWrongMsg("");
+        inputRef.current?.focus();
+      }, 950);
+    }
+  };
+
+  const handleKey = (e) => {
+    if (e.key === "Enter") { if (solved) newQ(subIdx); else handleSubmit(); }
+  };
+
+  const accuracy = total > 0 ? Math.round((score/total)*100) : 0;
+  const borderColor = solved ? "#00ff88" : "#1a1a2e";
+  if (!q) return null;
+
+  return (
+    <div style={{ width:"100%", maxWidth:"460px", zIndex:1, display:"flex", flexDirection:"column", alignItems:"center" }}>
+
+      {/* Sub-mode tabs */}
+      <div style={{ display:"flex", gap:4, marginBottom:10, background:"#0d0d1c", border:"1px solid #1a1a2e", borderRadius:6, padding:4 }}>
+        {UNIT_SUBS.map((s,i) => {
+          const active = subIdx===i;
+          return (
+            <button key={s.id} onClick={() => switchSub(i)} style={{
+              background: active ? `${accent}1a` : "transparent",
+              color:       active ? accent : "#2e2e4a",
+              border:      active ? `1px solid ${accent}44` : "1px solid transparent",
+              borderRadius:4, padding:"8px 28px",
+              fontSize:"13px", fontFamily:"'Courier New',monospace",
+              fontWeight:"700", letterSpacing:"2px", transition:"all 0.2s", position:"relative",
+            }}>
+              {s.label}
+              {active && <div style={{ position:"absolute", bottom:"-1px", left:"22%", right:"22%", height:"2px", background:accent, borderRadius:"2px", boxShadow:`0 0 8px ${accent}` }}/>}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Stats */}
+      <div style={{ display:"flex", gap:6, marginBottom:14, justifyContent:"center" }}>
+        {[
+          { v:`${score}/${total}`, l:"SCORE",    c:accent, flash:scoreAnim },
+          { v:`${streak}`,         l:"STREAK",   c:streak>2?"#ff6b35":"#e0e0d8", fire:streak>2 },
+          { v:`${accuracy}%`,      l:"ACCURACY", c:"#e0e0d8" },
+          { v:`${bestStreak}`,     l:"BEST",     c:"#e0e0d8" },
+        ].map(({ v,l,c,fire,flash }) => (
+          <div key={l} style={{ textAlign:"center", background:"#0d0d1c", border:"1px solid #1a1a2e", borderRadius:4, padding:"9px 14px", minWidth:"65px" }}>
+            <div className={flash?"anim-score":""} style={{ color:c, fontSize:"15px", fontWeight:"700", display:"flex", alignItems:"center", justifyContent:"center", gap:3, transition:"color 0.3s" }}>
+              {v}{fire && <span className="anim-streak" style={{fontSize:"13px",display:"inline-block"}}>🔥</span>}
+            </div>
+            <div style={{ fontSize:"9px", letterSpacing:"2px", color:"#6b6b8a", marginTop:3 }}>{l}</div>
+          </div>
+        ))}
+      </div>
+
+      <TimerBar elapsed={elapsed} accent={accent} solved={solved}/>
+
+      {/* Card */}
+      <div className={cardAnim} style={{
+        background:"#0d0d1c", border:`2px solid ${borderColor}`, borderRadius:8,
+        padding:"36px 52px 32px", textAlign:"center", width:"100%", position:"relative",
+        transition:"border-color 0.25s",
+        boxShadow: solved ? "0 8px 48px rgba(0,255,136,0.1)" : "0 8px 40px rgba(0,0,0,0.6)",
+      }}>
+        {showParticles && <Particles color={accent}/>}
+
+        <div style={{ display:"inline-block", background:`${accent}12`, border:`1px solid ${accent}28`, borderRadius:2, padding:"3px 10px", fontSize:"9px", letterSpacing:"4px", color:accent, marginBottom:16 }}>
+          UNIT DIGIT · {sub.label}
+        </div>
+
+        {/* Question */}
+        <div key={qKey} className="anim-slide-up" style={{ marginBottom:8 }}>
+          {q.op === "mul" ? (
+            <div style={{ fontSize:"36px", fontWeight:900, letterSpacing:"-1px", lineHeight:1.4, display:"flex", alignItems:"center", justifyContent:"center", flexWrap:"wrap", gap:"6px" }}>
+              {q.nums.map((n, i) => (
+                <span key={i} style={{display:"flex",alignItems:"center",gap:"6px"}}>
+                  {i > 0 && <span style={{color:accent}}>×</span>}
+                  <span>{n}</span>
+                </span>
+              ))}
+            </div>
+          ) : (
+            <div style={{ fontSize:"64px", fontWeight:900, letterSpacing:"-2px", lineHeight:1 }}>
+              {q.base}
+              <span style={{ color:accent, fontSize:"30px", verticalAlign:"super", letterSpacing:"-1px" }}>{q.power}</span>
+            </div>
+          )}
+        </div>
+        <div style={{ fontSize:12, color:"#4a4a6a", marginBottom:20 }}>
+          Find the unit place digit (0–9)
+        </div>
+
+        {!solved && (<>
+          <input
+            ref={inputRef} autoFocus type="number"
+            value={input} onChange={e => setInput(e.target.value)} onKeyDown={handleKey}
+            placeholder="0–9"
+            className={inputAnim==="wrong" ? "anim-wrong-inp" : ""}
+            style={{ width:"120px", background:"#080810", border:"1px solid #1a1a2e", borderRadius:4, padding:"14px 16px", fontSize:36, fontFamily:"'Courier New',monospace", color:accent, textAlign:"center", outline:"none", letterSpacing:"3px", transition:"border-color 0.2s, box-shadow 0.2s" }}
+            onFocus={e=>{ e.target.style.borderColor=accent+"55"; e.target.style.boxShadow=`0 0 16px ${accent}22`; }}
+            onBlur={e=>{ e.target.style.borderColor="#1a1a2e"; e.target.style.boxShadow="none"; }}
+          />
+          {wrongMsg && <div className="anim-slide-up" style={{ marginTop:10, fontSize:12, color:"#ff4455", letterSpacing:"1px" }}>{wrongMsg}</div>}
+        </>)}
+
+        {solved && (
+          <div className="anim-slide-up">
+            <div style={{ fontSize:54, fontWeight:900, color:"#00ff88", marginBottom:10, textShadow:"0 0 24px #00ff8855" }}>✓</div>
+            <div style={{ fontSize:14, color:"#555", marginBottom:6 }}>
+              Correct!&nbsp;
+              {firstTry
+                ? <span style={{ color:accent }}>First try! 🎯</span>
+                : <span style={{ color:"#3a3a5a" }}>Keep practising</span>
+              }
+            </div>
+            <div style={{ fontSize:12, color:"#6b6b8a", display:"flex", justifyContent:"center", gap:16, marginTop:4 }}>
+              <span>Unit digit: <span style={{ color:"#00ff88", fontWeight:700 }}>{q.answer}</span></span>
+              <span>·</span>
+              <span>Time: <span style={{ color:accent, fontWeight:700 }}>{elapsed}s</span></span>
+            </div>
+          </div>
+        )}
+
+        <div style={{ marginTop:24, display:"flex", gap:10, justifyContent:"center" }}>
+          {!solved && <>
+            <button onClick={handleSubmit} style={{ background:accent, color:"#07070f", border:"none", borderRadius:3, padding:"13px 36px", fontSize:13, fontFamily:"'Courier New',monospace", fontWeight:700, letterSpacing:"2px", textTransform:"uppercase", boxShadow:`0 4px 18px ${accent}44` }}>Submit</button>
+            <button onClick={() => setShowHint(h=>!h)} style={{ background:showHint?`${accent}18`:"transparent", color:showHint?accent:"#2e2e4a", border:`1px solid ${showHint?accent+"44":"#1a1a2e"}`, borderRadius:3, padding:"13px 22px", fontSize:13, fontFamily:"'Courier New',monospace", letterSpacing:"1px", transition:"all 0.2s" }}>
+              {showHint ? "Hide" : "Hint"}
+            </button>
+          </>}
+          {solved && <button onClick={() => newQ(subIdx)} style={{ background:accent, color:"#07070f", border:"none", borderRadius:3, padding:"13px 48px", fontSize:13, fontFamily:"'Courier New',monospace", fontWeight:700, letterSpacing:"2px", textTransform:"uppercase", boxShadow:`0 4px 18px ${accent}44` }}>Next →</button>}
+        </div>
+      </div>
+
+      {/* Hint Panel */}
+      {showHint && !solved && q && (
+        <div className="anim-slide-up" style={{ marginTop:12, background:"#0d0d1c", border:"1px solid #1a1a2e", borderRadius:6, padding:"20px 28px", width:"100%", zIndex:1, boxShadow:"0 4px 20px rgba(0,0,0,0.4)" }}>
+          <UnitDigitHint q={q} accent={accent}/>
+        </div>
+      )}
+
+      <div style={{ marginTop:16, fontSize:10, color:"#131326", letterSpacing:"3px" }}>
+        ENTER TO SUBMIT · ENTER AGAIN FOR NEXT
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 //  Main App
 // ─────────────────────────────────────────────────────────────────────────────
 export default function SquareQuiz() {
@@ -1126,6 +1444,7 @@ export default function SquareQuiz() {
   const isCalc   = mode.id === "calc";
   const isSpeed  = mode.id === "speed";
   const isTables = mode.id === "tables";
+  const isUnit   = mode.id === "unit";
 
   const newQuestion = (idx) => {
     const m = MODES[idx];
@@ -1149,12 +1468,12 @@ export default function SquareQuiz() {
 
   // Timer — updates every 1s to keep display stable (bar uses CSS transition for smoothness)
   useEffect(() => {
-    if (!running || isCalc || isSpeed || isTables) return;
+    if (!running || isCalc || isSpeed || isTables || isUnit) return;
     const id = setInterval(() => {
       setElapsed(((Date.now() - startTime) / 1000).toFixed(1));
     }, 1000);
     return () => clearInterval(id);
-  }, [running, startTime, isCalc, isSpeed, isTables]);
+  }, [running, startTime, isCalc, isSpeed, isTables, isUnit]);
 
   const handleSubmit = () => {
     if (!input || !q) return;
@@ -1193,7 +1512,7 @@ export default function SquareQuiz() {
   };
 
   const accuracy = total > 0 ? Math.round((score/total)*100) : 0;
-  if (!q && !isCalc && !isSpeed && !isTables) return null;
+  if (!q && !isCalc && !isSpeed && !isTables && !isUnit) return null;
 
   const borderColor = solved ? "#00ff88" : "#1a1a2e";
 
@@ -1280,8 +1599,11 @@ export default function SquareQuiz() {
         {/* ── TABLES MODE ── */}
         {isTables && <Tables accent={accent} setToast={setToast}/>}
 
+        {/* ── UNIT DIGIT MODE ── */}
+        {isUnit && <UnitDigit accent={accent} setToast={setToast}/>}
+
         {/* ── QUIZ MODE ── */}
-        {!isCalc && !isSpeed && !isTables && (<>
+        {!isCalc && !isSpeed && !isTables && !isUnit && (<>
           {/* Stats */}
           <div style={{display:"flex",gap:"6px",marginBottom:"14px",zIndex:1}}>
             {[
